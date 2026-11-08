@@ -17,6 +17,9 @@ ALEMBIC_INI = str(BASE_DIR / "alembic.ini")
 
 def _alembic_cfg() -> Config:
     cfg = Config(ALEMBIC_INI)
+    # Always resolve script_location from BASE_DIR so migrations work regardless
+    # of the process cwd (critical when launched as a PyInstaller binary).
+    cfg.set_main_option("script_location", str(BASE_DIR / "alembic"))
     cfg.attributes["configure_logger"] = False
     return cfg
 

@@ -7,6 +7,7 @@ from sqlmodel import Session
 
 from app.api.schemas.enums import LLMProvider
 from app.core import paths
+from app.core.config import DATA_DIR, FIREFORM_DESKTOP
 from app.core.errors.base import AppError
 from app.db.repositories import (
     create_form,
@@ -95,7 +96,14 @@ class FormService:
 
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         out_name = f"{resolved_pdf.stem}_{timestamp}_filled.pdf"
-        out_target = resolved_pdf.parent / out_name
+        if FIREFORM_DESKTOP:
+            # In desktop mode PROJECT_ROOT is the PyInstaller temp dir; write
+            # filled PDFs to the persistent DATA_DIR so they survive restarts.
+            out_dir = DATA_DIR / "outputs"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            out_target = out_dir / out_name
+        else:
+            out_target = resolved_pdf.parent / out_name
 
         filler.fill(
             pdf_path=str(resolved_pdf),
@@ -107,7 +115,7 @@ class FormService:
             registry=registry,
         )
 
-        relative_out = out_target.relative_to(paths.PROJECT_ROOT).as_posix()
+        relative_out = paths.make_storable_path(out_target)
 
         submission = FormSubmission(
             template_id=template.id,

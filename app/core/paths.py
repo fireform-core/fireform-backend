@@ -29,6 +29,25 @@ def _resolve_target_directory(directory: str) -> Path:
     return candidate
 
 
+def make_storable_path(path: Path) -> str:
+    """Return a path as a posix string suitable for DB storage.
+
+    When ``path`` is inside PROJECT_ROOT we store a project-relative string so
+    submissions are portable across machines and docker volume mounts (the
+    historical behaviour for server/Docker deployments).
+
+    When ``path`` is *outside* PROJECT_ROOT — which happens in desktop mode
+    where DATA_DIR lives in ``~/Library/Application Support/FireForm/data/``
+    rather than under ``sys._MEIPASS`` — we fall back to the absolute posix
+    path.  ``_resolve_project_file`` already allows absolute paths that are
+    inside DATA_DIR, so the round-trip still resolves correctly.
+    """
+    try:
+        return path.relative_to(PROJECT_ROOT).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
 def _resolve_project_file(file_path: str) -> Path:
     raw_path = (file_path or "").strip()
     if not raw_path:

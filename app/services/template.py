@@ -12,7 +12,7 @@ from app.api.schemas.templates import (
     TemplateUploadResponse,
 )
 from app.core import paths
-from app.core.config import SEED_TEMPLATE_PDF_PATH
+from app.core.config import FIREFORM_DESKTOP, SEED_TEMPLATE_PDF_PATH
 from app.core.errors.base import AppError
 from app.core.pdf_utils import _count_pdf_widgets, _extract_pdf_fields
 from app.db.repositories import (
@@ -80,7 +80,7 @@ class TemplateService:
         with target_path.open("wb") as output_file:
             output_file.write(content)
 
-        relative_path = target_path.relative_to(paths.PROJECT_ROOT).as_posix()
+        relative_path = paths.make_storable_path(target_path)
 
         try:
             schema, tables, groups = extract_pdf_template(str(target_path))
@@ -159,6 +159,14 @@ class TemplateService:
 
 
     def make_fillable(self, resolved_pdf_path: str) -> MakeFillableResponse:
+        if FIREFORM_DESKTOP:
+            raise AppError(
+                "AI Schema extraction is not available in the desktop build — "
+                "it requires ultralytics/YOLO which is not bundled. "
+                "Use the full Docker deployment for this feature.",
+                status_code=503,
+                error_code="MAKE_FILLABLE_UNAVAILABLE_IN_DESKTOP",
+            )
         template_path = resolved_pdf_path[:-4] + "_template.pdf"
         try:
             import os
@@ -176,7 +184,7 @@ class TemplateService:
         new_path = Path(template_path)
         if not new_path.is_absolute():
             new_path = (paths.PROJECT_ROOT / new_path).resolve()
-        relative_path = new_path.relative_to(paths.PROJECT_ROOT).as_posix()
+        relative_path = paths.make_storable_path(new_path)
 
         return MakeFillableResponse(
             pdf_path=relative_path,

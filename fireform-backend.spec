@@ -56,6 +56,11 @@ hiddenimports = [
     "app.tasks.fill",
     "app.tasks.purge",
     "app.tasks.transcribe",
+    "app.tasks.report",
+    "app.api.routes.reports",
+    "celery.loaders.app",
+    "celery.loaders.base",
+    "celery.app.events",
 ]
 
 a = Analysis(

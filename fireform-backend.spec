@@ -1,6 +1,4 @@
 # -*- mode: python ; coding: utf-8 -*-
-from pathlib import Path
-import sys
 
 block_cipher = None
 
@@ -58,6 +56,15 @@ hiddenimports = [
     "app.tasks.transcribe",
     "app.tasks.report",
     "app.api.routes.reports",
+    "app.services.reporting",
+    "reportlab",
+    "reportlab.lib",
+    "reportlab.lib.colors",
+    "reportlab.lib.pagesizes",
+    "reportlab.lib.styles",
+    "reportlab.platypus",
+    "reportlab.pdfbase._fontdata",
+    "reportlab.lib.utils",
     "celery.loaders.app",
     "celery.loaders.base",
     "celery.app.events",
@@ -110,4 +117,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon="assets/icon.icns",
 )

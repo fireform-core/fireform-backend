@@ -29,9 +29,12 @@ def test_rate_limit_forms_fill():
     assert response.status_code == 429
     
     data = response.json()
-    assert data["success"] is False
-    assert data["error"] == "RATE_LIMIT_EXCEEDED"
+    assert data["error_code"] == "RATE_LIMIT_EXCEEDED"
     assert "20 per 1 minute" in data["message"]
+    # Same envelope as AppError, plus when to try again
+    assert "success" not in data and "error" not in data
+    assert 1 <= data["retry_after_seconds"] <= 60
+    assert response.headers["Retry-After"] == str(data["retry_after_seconds"])
 
 
 def test_rate_limit_templates_upload():

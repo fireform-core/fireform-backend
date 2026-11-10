@@ -109,6 +109,21 @@ fill:
             example:
               error_code: "FORM_FILL_ERROR"
               message: "Ollama did not respond within 120 seconds"
+      "429":
+        description: Rate limit of 20/minute per client IP exceeded. Wait
+          `retry_after_seconds` (also sent as the `Retry-After` header).
+        headers:
+          Retry-After:
+            schema:
+              type: integer
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/common.yaml#/ErrorResponse"
+            example:
+              error_code: "RATE_LIMIT_EXCEEDED"
+              message: "Too many requests. Limit: 20 per 1 minute"
+              retry_after_seconds: 42
 
 async_fill:
   post:

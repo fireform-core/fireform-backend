@@ -138,7 +138,8 @@ def expand_output(llm_output, tables, groups):
     flat = {}
 
     for table_num, table in enumerate(tables):
-        rows = llm_output.get(table["name"], [])
+        # Providers without structured output can answer null for a table
+        rows = llm_output.get(table["name"]) or []
         for i, row in enumerate(rows):
             for col in table["columns"]:
                 if col in groups and i < len(groups[col]) and col in row:

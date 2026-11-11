@@ -183,3 +183,13 @@ def test_radio_group_answered_off_stays_unselected(tmp_path):
 
     assert _radio_states(out_path, "Gender") == {"/Male": "/Off", "/Female": "/Off"}
     assert _radio_states(out_path, "ER") == {"/Yes": "/Off", "/No": "/Off"}
+
+
+def test_expand_output_treats_null_table_as_empty():
+    # Providers without structured output (Anthropic) can answer null for a table
+    tables = [{"name": TABLE, "columns": ["Name"]}]
+    groups = {"Name": ["Name_Row1", "Name_Row2"]}
+
+    values = template.expand_output({TABLE: None, "Incident Name": "Ridge Fire"}, tables, groups)
+
+    assert values == {"Incident Name": "Ridge Fire"}

@@ -1,5 +1,8 @@
 import datetime
 import logging
+import os
+import sqlite3
+import tempfile
 from pathlib import Path
 
 from alembic.config import Config
@@ -7,37 +10,90 @@ from alembic.util import CommandError
 from sqlmodel import Session, select, text
 
 from alembic import command
-from app.core.config import SEED_TEMPLATE_PDF_PATH
+from app.core.config import BASE_DIR, FIREFORM_DESKTOP, SEED_TEMPLATE_PDF_PATH
 from app.db.database import engine
 from app.models import Template
 
 logger = logging.getLogger(__name__)
 
-ALEMBIC_INI = str(Path(__file__).resolve().parents[2] / "alembic.ini")
+ALEMBIC_INI = str(BASE_DIR / "alembic.ini")
 
 
 def _alembic_cfg() -> Config:
     cfg = Config(ALEMBIC_INI)
+    # Always resolve script_location from BASE_DIR so migrations work regardless
+    # of the process cwd (critical when launched as a PyInstaller binary).
+    cfg.set_main_option("script_location", str(BASE_DIR / "alembic"))
     cfg.attributes["configure_logger"] = False
     return cfg
 
 
+def _sqlite_database_path() -> Path | None:
+    if engine.dialect.name != "sqlite":
+        return None
+    database = engine.url.database
+    if not database or database == ":memory:":
+        return None
+    return Path(database).resolve()
+
+
+def _backup_sqlite_database(database_path: Path) -> Path:
+    fd, backup_name = tempfile.mkstemp(
+        prefix=f".{database_path.name}.pre-migration-",
+        suffix=".bak",
+        dir=database_path.parent,
+    )
+    os.close(fd)
+    backup_path = Path(backup_name)
+    try:
+        with sqlite3.connect(database_path) as source, sqlite3.connect(backup_path) as target:
+            source.backup(target)
+    except Exception:
+        backup_path.unlink(missing_ok=True)
+        raise
+    return backup_path
+
+
+def _restore_sqlite_database(database_path: Path, backup_path: Path) -> None:
+    engine.dispose()
+    with sqlite3.connect(backup_path) as source, sqlite3.connect(database_path) as target:
+        source.backup(target)
+
+
 def run_migrations():
     logger.info("Running Alembic migrations...")
+    backup_path = None
+    database_path = _sqlite_database_path() if FIREFORM_DESKTOP else None
+    if database_path is not None and database_path.is_file():
+        backup_path = _backup_sqlite_database(database_path)
+
     try:
         command.upgrade(_alembic_cfg(), "head")
-    except CommandError as e:
-        if "Can't locate revision" not in str(e):
-            raise
-        # Exit non-zero with a readable message instead of a bare stack trace.
-        raise SystemExit(
-            f"[init_db] {e}.\n"
-            "The database is stamped with a migration revision this code does not know\n"
-            "(e.g. a DB created by another branch). Either reset the dev database:\n"
-            "    make down && docker volume rm dev_postgres_data\n"
-            "or re-stamp it to a revision in alembic/versions/:\n"
-            "    alembic stamp <revision>"
-        ) from e
+    except BaseException as migration_error:
+        if backup_path is not None and database_path is not None:
+            try:
+                _restore_sqlite_database(database_path, backup_path)
+            except Exception as restore_error:
+                logger.exception("Failed to restore SQLite database after migration failure.")
+                raise RuntimeError(
+                    "Database migration failed and automatic restore also failed. "
+                    f"The pre-migration backup is preserved at {backup_path}."
+                ) from restore_error
+            backup_path.unlink(missing_ok=True)
+        if isinstance(migration_error, CommandError) and "Can't locate revision" in str(migration_error):
+            # Exit non-zero with a readable message instead of a bare stack trace.
+            raise SystemExit(
+                f"[init_db] {migration_error}.\n"
+                "The database is stamped with a migration revision this code does not know\n"
+                "(e.g. a DB created by another branch). Either reset the dev database:\n"
+                "    make down && docker volume rm dev_postgres_data\n"
+                "or re-stamp it to a revision in alembic/versions/:\n"
+                "    alembic stamp <revision>"
+            ) from migration_error
+        raise
+    else:
+        if backup_path is not None:
+            backup_path.unlink(missing_ok=True)
     logger.info("Migrations complete.")
 
 

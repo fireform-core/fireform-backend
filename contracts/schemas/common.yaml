@@ -20,7 +20,7 @@ ErrorResponse:
       additionalProperties: true
     retry_after_seconds:
       type: integer
-      description: Present on 503 errors seconds to wait before retrying
+      description: Present on 503 and 429 errors, seconds to wait before retrying
     validation_errors:
       type: array
       description: Present on 422 errors list of field-level validation issues

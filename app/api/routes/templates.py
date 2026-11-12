@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, Request
 from fastapi.responses import FileResponse
 from sqlmodel import Session
 
@@ -17,6 +17,7 @@ from app.core.config import DEFAULT_TEMPLATE_DIR
 from app.core.errors.base import AppError
 from app.db.repositories import get_template
 from app.services.template import TemplateService
+from app.api.middleware.rate_limiter import limiter
 
 router = APIRouter(prefix="/templates", tags=["templates"])
 
@@ -24,7 +25,8 @@ _MAX_TEMPLATE_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
 @router.post("/upload", response_model=TemplateUploadResponse)
-async def upload_template_pdf(
+@limiter.limit("10/minute")
+async def upload_template_pdf(request: Request,
     file: UploadFile = File(...),
     directory: str = Form(DEFAULT_TEMPLATE_DIR),
 ):
@@ -55,7 +57,8 @@ async def upload_template_pdf(
 
 
 @router.get("", response_model=list[TemplateResponse])
-def get_templates(db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def get_templates(request: Request, db: Session = Depends(get_db)):
     return TemplateService().list_templates(db)
 
 

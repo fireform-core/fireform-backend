@@ -13,6 +13,7 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
 from app.api.deps import get_db
+from app.api.middleware.rate_limiter import limiter
 from app.api.schemas.enums import LLMProvider
 from app.main import app
 from app.models import (  # noqa: F401 — registers tables
@@ -106,6 +107,10 @@ def test_engine():
     """Expose the shared in-memory engine for tests that need to open extra sessions."""
     return _engine
 
+@pytest.fixture(autouse=True, scope="session")
+def disable_rate_limiter_globally():
+    """Turn off the rate limiter for all tests."""
+    limiter.enabled = False
 
 # ---------------------------------------------------------------------------
 # Minimal PDF bytes (valid 1-page blank PDF)

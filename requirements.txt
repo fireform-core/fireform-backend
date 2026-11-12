@@ -24,3 +24,4 @@ pandas
 geopy
 alembic
 reportlab
+slowapi

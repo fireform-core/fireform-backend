@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends, File, UploadFile, Query
+from fastapi import APIRouter, Depends, File, UploadFile, Query, Request
 from sqlmodel import Session
 
 from app.api.deps import get_db, verify_api_key
@@ -17,6 +17,7 @@ from app.services.whisper import call_whisper_asr
 from app.core.errors.base import AppError
 from app.db.repositories import get_template, get_form_submission, delete_form_submission
 from app.services.form import FormService
+from app.api.middleware.rate_limiter import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,8 @@ _MAX_AUDIO_BYTES = 500 * 1024 * 1024  # 500 MB, same as /input/voice
 
 
 @router.post("/fill", response_model=FormFillResponse)
-def fill_form(form: FormFill, db: Session = Depends(get_db)):
+@limiter.limit("20/minute")
+def fill_form(request: Request, form: FormFill, db: Session = Depends(get_db)):
     fetched_template = get_template(db, form.template_id)
     if not fetched_template:
         raise AppError("Template not found", status_code=404, error_code="TEMPLATE_NOT_FOUND")

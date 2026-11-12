@@ -36,6 +36,21 @@ templates:
                   "Employee's job title": "string"
                   "Date": "string"
                 field_count: 3
+      "429":
+        description: Rate limit of 10/minute per client IP exceeded. Wait
+          `retry_after_seconds` (also sent as the `Retry-After` header).
+        headers:
+          Retry-After:
+            schema:
+              type: integer
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/common.yaml#/ErrorResponse"
+            example:
+              error_code: "RATE_LIMIT_EXCEEDED"
+              message: "Too many requests. Limit: 10 per 1 minute"
+              retry_after_seconds: 42
 
 templates_upload:
   post:
@@ -110,6 +125,21 @@ templates_upload:
               detail:
                 max_size_bytes: 10485760
                 received_size_bytes: 12582912
+      "429":
+        description: Rate limit of 10/minute per client IP exceeded. Wait
+          `retry_after_seconds` (also sent as the `Retry-After` header).
+        headers:
+          Retry-After:
+            schema:
+              type: integer
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/common.yaml#/ErrorResponse"
+            example:
+              error_code: "RATE_LIMIT_EXCEEDED"
+              message: "Too many requests. Limit: 10 per 1 minute"
+              retry_after_seconds: 42
 
 templates_preview:
   get:

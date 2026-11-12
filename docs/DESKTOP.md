@@ -63,7 +63,7 @@ FireForm/
 On the very first launch:
 
 1. **Backend binary starts** — Electron spawns `api-backend` with `FIREFORM_DESKTOP=true` and the `userData` paths set via environment variables.
-2. **Database initialized** — Alembic runs all migrations against `fireform.db`; the seed template is inserted.
+2. **Database initialized** — Before upgrading an existing `fireform.db`, the backend creates a consistent SQLite backup. If a migration fails, it restores the backup and aborts startup. The temporary backup is removed after a successful upgrade or restore; if restoring fails, the backup is preserved and the error is reported. The seed template is then inserted.
 3. **Ollama lifecycle** — Electron checks port `11434`:
    - If a process is already serving → use it.
    - If Ollama is installed but not running → start it silently (`ollama serve`).

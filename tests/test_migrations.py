@@ -7,11 +7,14 @@ Runs migrations against an in-memory SQLite database to verify:
 - schema matches expected columns and foreign keys
 """
 
+import sqlite3
+
 import pytest
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect
 
 from alembic import command
+from app.db import init_db as init_db_module
 
 ALEMBIC_INI = "alembic.ini"
 
@@ -65,6 +68,64 @@ def test_round_trip(alembic_cfg, alembic_engine):
     tables = inspector.get_table_names()
     assert "template" in tables
     assert "formsubmission" in tables
+
+
+def test_desktop_migration_failure_restores_database(monkeypatch, tmp_path):
+    database_path = tmp_path / "fireform.db"
+    with sqlite3.connect(database_path) as connection:
+        connection.execute("CREATE TABLE user_data (value TEXT)")
+        connection.execute("INSERT INTO user_data VALUES ('preserve me')")
+
+    test_engine = create_engine(f"sqlite:///{database_path}")
+    monkeypatch.setattr(init_db_module, "engine", test_engine)
+    monkeypatch.setattr(init_db_module, "FIREFORM_DESKTOP", True)
+    monkeypatch.setattr(init_db_module, "_alembic_cfg", lambda: Config())
+
+    def failing_upgrade(_config, _revision):
+        with sqlite3.connect(database_path) as connection:
+            connection.execute("DROP TABLE user_data")
+            connection.execute("CREATE TABLE partial_migration (value TEXT)")
+        raise RuntimeError("migration failed")
+
+    monkeypatch.setattr(init_db_module.command, "upgrade", failing_upgrade)
+
+    with pytest.raises(RuntimeError, match="migration failed"):
+        init_db_module.run_migrations()
+
+    with sqlite3.connect(database_path) as connection:
+        assert connection.execute("SELECT value FROM user_data").fetchone() == ("preserve me",)
+        assert connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='partial_migration'"
+        ).fetchone() is None
+    assert not list(tmp_path.glob("*.bak"))
+    test_engine.dispose()
+
+
+def test_server_migration_failure_does_not_restore_database(monkeypatch, tmp_path):
+    database_path = tmp_path / "fireform.db"
+    with sqlite3.connect(database_path) as connection:
+        connection.execute("CREATE TABLE user_data (value TEXT)")
+        connection.execute("INSERT INTO user_data VALUES ('original')")
+
+    test_engine = create_engine(f"sqlite:///{database_path}")
+    monkeypatch.setattr(init_db_module, "engine", test_engine)
+    monkeypatch.setattr(init_db_module, "FIREFORM_DESKTOP", False)
+    monkeypatch.setattr(init_db_module, "_alembic_cfg", lambda: Config())
+
+    def failing_upgrade(_config, _revision):
+        with sqlite3.connect(database_path) as connection:
+            connection.execute("UPDATE user_data SET value='changed'")
+        raise RuntimeError("migration failed")
+
+    monkeypatch.setattr(init_db_module.command, "upgrade", failing_upgrade)
+
+    with pytest.raises(RuntimeError, match="migration failed"):
+        init_db_module.run_migrations()
+
+    with sqlite3.connect(database_path) as connection:
+        assert connection.execute("SELECT value FROM user_data").fetchone() == ("changed",)
+    assert not list(tmp_path.glob("*.bak"))
+    test_engine.dispose()
 
 
 def test_template_columns(alembic_cfg, alembic_engine):
@@ -353,4 +414,3 @@ def test_alembic_check_no_pending_migrations(alembic_cfg):
     """Verify that models and migrations are completely in sync (alembic check passes)."""
     command.upgrade(alembic_cfg, "head")
     command.check(alembic_cfg)
-

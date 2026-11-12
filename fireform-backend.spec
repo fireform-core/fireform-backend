@@ -1,5 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.utils.hooks import collect_submodules
+
 block_cipher = None
 
 datas = [
@@ -69,6 +71,9 @@ hiddenimports = [
     "celery.loaders.base",
     "celery.app.events",
 ]
+
+hiddenimports += collect_submodules("celery")
+hiddenimports += collect_submodules("kombu")
 
 a = Analysis(
     ["app/desktop.py"],

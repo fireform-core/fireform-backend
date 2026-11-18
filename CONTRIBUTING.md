@@ -9,7 +9,7 @@ FireForm is a Digital Public Good (DPG) designed to reduce administrative overhe
 
 ## 🌈 Code of Conduct
 
-This project and everyone participating in it is governed by the [FireForm Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code. Please report unacceptable behavior to juanalvarez_san@protonmail.com.
+This project and everyone participating in it is governed by the [FireForm Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code. Please report unacceptable behavior to marcvergessantiago@gmail.com.
 
 ## 🚀 How Can I Contribute?
 

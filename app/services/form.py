@@ -12,11 +12,13 @@ from app.core.errors.base import AppError
 from app.db.repositories import (
     create_form,
     delete_form_submission,
+    get_current_profile,
     get_submissions,
     get_submissions_before,
     get_submissions_with_template,
 )
 from app.models import FormSubmission, Template
+from app.models.models import Profile
 from app.services import llm
 from app.services.form_filler import filler
 from app.services.input import InputService
@@ -45,6 +47,7 @@ class FormService:
         input_text: str | None = None,
         provider: LLMProvider | None = None,
         model: str | None = None,
+        include_profile_context: bool = False,
     ) -> FormSubmission:
         # Before anything is stored, so a bad pick leaves no stray input behind
         registry = llm.effective_registry(session)
@@ -69,8 +72,10 @@ class FormService:
                 input_id = input_record.input_id
         else:
             raise AppError("Either input_id or input_text is required", status_code=422, error_code="VALIDATION_ERROR")
+        profile = get_current_profile(session) if include_profile_context else None
         return self.fill_and_persist(
-            session, template, transcript, input_id, choice.model, choice.provider, registry=registry
+            session, template, transcript, input_id, choice.model, choice.provider,
+            registry=registry, profile=profile,
         )
 
     def fill_and_persist(
@@ -82,6 +87,7 @@ class FormService:
         model: str | None = None,
         provider: LLMProvider | None = None,
         registry=None,
+        profile: Profile | None = None,
     ) -> FormSubmission:
         registry = registry or llm.effective_registry(session)
         resolved_pdf = paths._resolve_project_file(template.pdf_path)
@@ -113,6 +119,7 @@ class FormService:
             model=model,
             description=template.description,
             registry=registry,
+            profile=profile,
         )
 
         relative_out = paths.make_storable_path(out_target)

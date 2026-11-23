@@ -42,6 +42,7 @@ def fill_form(request: Request, form: FormFill, db: Session = Depends(get_db)):
             input_text=form.input_text,
             provider=form.provider,
             model=form.model,
+            include_profile_context=form.include_profile_context,
         )
         return FormFillResponse(
             id=submission.id,

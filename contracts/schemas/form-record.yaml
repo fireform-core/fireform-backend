@@ -33,6 +33,12 @@ FormFillRequest:
       nullable: true
       description: Model to fill with. Must be one GET /system/llm/models lists
         under the chosen provider. Defaults to that provider's default model.
+    include_profile_context:
+      type: boolean
+      default: false
+      description: Add the current profile (see GET /profiles/) to the model
+        input. Has no effect when no profile is saved. With a cloud provider
+        the profile is sent to that provider.
 
 FormFillResponse:
   type: object
@@ -86,6 +92,12 @@ AsyncFormFillRequest:
       nullable: true
       description: Model to fill with. Must be one GET /system/llm/models lists
         under the chosen provider. Defaults to that provider's default model.
+    include_profile_context:
+      type: boolean
+      default: false
+      description: Add the current profile (see GET /profiles/) to the model
+        input. Has no effect when no profile is saved. With a cloud provider
+        the profile is sent to that provider.
 
 AsyncFormFillResponse:
   type: object

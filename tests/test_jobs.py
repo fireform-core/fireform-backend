@@ -64,7 +64,7 @@ class TestJobEndpoints:
         assert "job_id" in data["jobs"][0]
         assert data["jobs"][0]["poll_url"].startswith(f"{API_PREFIX}/jobs/")
         mock_task.apply_async.assert_called_once_with(
-            (tpl_id, "John Doe firefighter", str(input_id), "qwen2.5:1.5b", "ollama"),
+            (tpl_id, "John Doe firefighter", str(input_id), "qwen2.5:1.5b", "ollama", None),
             task_id=data["jobs"][0]["job_id"],
         )
         job = db.exec(select(Job)).one()
@@ -171,7 +171,7 @@ class TestJobEndpoints:
         })
         assert resp.status_code == 200, resp.json()
         mock_task.apply_async.assert_called_once_with(
-            (tpl_id, "test", str(input_id), "mistral:latest", "ollama"), task_id=ANY
+            (tpl_id, "test", str(input_id), "mistral:latest", "ollama", None), task_id=ANY
         )
 
     def test_submit_empty_template_ids(self, client, db):

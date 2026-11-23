@@ -13,7 +13,13 @@ from app.api.schemas.forms import (
     JobResponse,
 )
 from app.core.errors.base import AppError
-from app.db.repositories import create_job, get_job_by_uuid, get_template, update_job
+from app.db.repositories import (
+    create_job,
+    get_current_profile,
+    get_job_by_uuid,
+    get_template,
+    update_job,
+)
 from app.models import Job
 from app.services import llm
 from app.services.input import InputService
@@ -49,6 +55,14 @@ def submit_async_form_fill(form: AsyncFormFill, db: Session = Depends(get_db)):
     # Checked here so a bad pick fails the request, not every queued job
     choice = llm.effective_registry(db).resolve(form.provider, form.model)
 
+    # Read once, so every job in the batch fills with the same profile
+    profile = get_current_profile(db) if form.include_profile_context else None
+    profile_data = (
+        profile.model_dump(include={"name", "profession", "role", "description", "custom_fields"})
+        if profile
+        else None
+    )
+
     jobs: list[AsyncJobSubmitResponse] = []
     for tid in form.template_ids:
         # Commit the job row before queueing the task, with the job's own id as
@@ -66,7 +80,7 @@ def submit_async_form_fill(form: AsyncFormFill, db: Session = Depends(get_db)):
         job = create_job(db, job)
         try:
             fill_form_task.apply_async(
-                (tid, transcript, str(form.input_id), choice.model, choice.provider.value),
+                (tid, transcript, str(form.input_id), choice.model, choice.provider.value, profile_data),
                 task_id=job.celery_task_id,
             )
         except Exception as e:

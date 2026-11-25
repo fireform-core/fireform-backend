@@ -64,7 +64,7 @@ class TestJobEndpoints:
         assert "job_id" in data["jobs"][0]
         assert data["jobs"][0]["poll_url"].startswith(f"{API_PREFIX}/jobs/")
         mock_task.apply_async.assert_called_once_with(
-            (tpl_id, "John Doe firefighter", str(input_id), "qwen2.5:1.5b", "ollama"),
+            (tpl_id, "John Doe firefighter", str(input_id), "qwen2.5:1.5b", "ollama", "en"),
             task_id=data["jobs"][0]["job_id"],
         )
         job = db.exec(select(Job)).one()
@@ -171,7 +171,23 @@ class TestJobEndpoints:
         })
         assert resp.status_code == 200, resp.json()
         mock_task.apply_async.assert_called_once_with(
-            (tpl_id, "test", str(input_id), "mistral:latest", "ollama"), task_id=ANY
+            (tpl_id, "test", str(input_id), "mistral:latest", "ollama", "en"), task_id=ANY
+        )
+
+    @patch("app.api.routes.jobs.fill_form_task")
+    def test_submit_async_with_language_spanish(self, mock_task, client, db):
+        tpl_id = self._seed_template(client)
+        input_id = self._seed_input(db, transcript="texto en español")
+        resp = client.post(f"{API_PREFIX}/forms/jobs", json={
+            "template_ids": [tpl_id],
+            "input_id": str(input_id),
+            "language": "es",
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        mock_task.apply_async.assert_called_once_with(
+            (tpl_id, "texto en español", str(input_id), "qwen2.5:1.5b", "ollama", "es"),
+            task_id=data["jobs"][0]["job_id"],
         )
 
     def test_submit_empty_template_ids(self, client, db):

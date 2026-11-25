@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 from pypdf import PdfReader
 
+from app.models import Profile
 from app.services.form_filler import filler, geometry, template
 from app.services.llm import ModelInfo
 
@@ -183,3 +184,44 @@ def test_radio_group_answered_off_stays_unselected(tmp_path):
 
     assert _radio_states(out_path, "Gender") == {"/Male": "/Off", "/Female": "/Off"}
     assert _radio_states(out_path, "ER") == {"/Yes": "/Off", "/No": "/Off"}
+
+
+def test_get_base_prompt_languages():
+    en_prompt = filler.get_base_prompt("en")
+    es_prompt = filler.get_base_prompt("es")
+    assert "FEMA ICS" in en_prompt
+    assert "motor de llenado" in es_prompt
+    # Default fallback to en
+    assert filler.get_base_prompt("unsupported") == en_prompt
+
+
+def test_build_prompt_multilingual():
+    profile = Profile(name="Chief Smith", profession="Firefighter", role="IC")
+    schema = {"properties": {"Incident_Name": {"type": "string"}}}
+    prompt_en = filler.build_prompt("Narrative", schema, "Desc", profile, language="en")
+    assert "<template_description>\nDesc\n</template_description>" in prompt_en
+    assert "<incident_narrative>\nNarrative\n</incident_narrative>" in prompt_en
+    assert "=== USER PROFILE CONTEXT ===" in prompt_en
+    assert "- Name: Chief Smith" in prompt_en
+    assert filler.PROMPT_EN.rstrip() in prompt_en
+
+    prompt_es = filler.build_prompt("Narrativa", schema, "Desc", profile, language="es")
+    assert "<template_description>\nDesc\n</template_description>" in prompt_es
+    assert "<incident_narrative>\nNarrativa\n</incident_narrative>" in prompt_es
+    assert "=== CONTEXTO DEL PERFIL DE USUARIO ===" in prompt_es
+    assert "- Nombre: Chief Smith" in prompt_es
+    assert filler.PROMPT_ES.rstrip() in prompt_es
+
+
+def test_fill_passes_language_to_call_model(tmp_path):
+    pdf_path = _radio_form(tmp_path / "radio.pdf")
+    out_path = tmp_path / "filled.pdf"
+    answer = {"Name": "Carlos Mendoza"}
+
+    with patch.object(filler, "call_model", return_value=json.dumps(answer)) as call:
+        filler.fill(pdf_path, "Narrativa en español.", str(out_path), language="es")
+
+    prompt, schema, model, provider = call.call_args.args
+    assert "<incident_narrative>\nNarrativa en español.\n</incident_narrative>" in prompt
+    assert prompt.startswith(filler.PROMPT_ES.rstrip())
+

@@ -2,7 +2,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from app.api.schemas.enums import JobStatus, JobType, LLMProvider
+from app.api.schemas.enums import JobStatus, JobType, LLMProvider, SupportedLanguage
 
 
 class FormFill(BaseModel):
@@ -11,6 +11,7 @@ class FormFill(BaseModel):
     input_id: UUID | None = None
     provider: LLMProvider | None = None
     model: str | None = None
+    language: SupportedLanguage = SupportedLanguage.en
 
 
 class FormFillResponse(BaseModel):
@@ -37,6 +38,7 @@ class AsyncFormFill(BaseModel):
     input_id: UUID
     provider: LLMProvider | None = None
     model: str | None = None
+    language: SupportedLanguage = SupportedLanguage.en
 
     @field_validator("template_ids")
     def validate_template_ids(cls, value):

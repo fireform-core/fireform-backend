@@ -21,34 +21,75 @@ from app.services import llm
 from . import template
 from .geometry import CHECKBOX, RADIOBUTTON, SIGNATURE, drop_null_parents, on_state, page_widgets
 
-with open(os.path.join(os.path.dirname(__file__), "prompt.txt"), "r") as f:
-    PROMPT = f.read()
+_PROMPT_DIR = os.path.join(os.path.dirname(__file__), "prompts")
 
 
-def append_profile_context(base_prompt: str, profile: Profile = None) -> str:
+def get_base_prompt(language: str = "en") -> str:
+    lang = language.lower() if language else "en"
+    prompt_file = os.path.join(_PROMPT_DIR, f"prompt_{lang}.txt")
+    if os.path.isfile(prompt_file):
+        with open(prompt_file, "r", encoding="utf-8") as f:
+            return f.read()
+    default_prompt_file = os.path.join(os.path.dirname(__file__), "prompt.txt")
+    if os.path.isfile(default_prompt_file):
+        with open(default_prompt_file, "r", encoding="utf-8") as f:
+            return f.read()
+    return ""
+
+
+PROMPT_EN = get_base_prompt("en")
+PROMPT_ES = get_base_prompt("es")
+PROMPT = PROMPT_EN
+
+
+def append_profile_context(base_prompt: str, profile: Profile = None, language: str = "en") -> str:
     if not profile:
         return base_prompt
-        
+
     desc = profile.description if profile.description else "N/A"
-        
-    profile_context = (
-        "=== USER PROFILE CONTEXT ===\n"
-        "The form is being filled out by a user with the following profile:\n"
-        f"- Name: {profile.name}\n"
-        f"- Profession: {profile.profession}\n"
-        f"- Role: {profile.role}\n"
-        f"- Description: {desc}\n"
-    )
-    
-    if profile.custom_fields:
-        for key, value in profile.custom_fields.items():
-            profile_context += f"- {key.capitalize()}: {value}\n"
-            
-    profile_context += "\nPlease use this context to provide more relevant and tailored field suggestions and validations.\n\n"
+    lang = language.lower() if language else "en"
+
+    if lang == "es":
+        profile_context = (
+            "=== CONTEXTO DEL PERFIL DE USUARIO ===\n"
+            "El formulario está siendo completado por un usuario con el siguiente perfil:\n"
+            f"- Nombre: {profile.name}\n"
+            f"- Profesión: {profile.profession}\n"
+            f"- Rol: {profile.role}\n"
+            f"- Descripción: {desc}\n"
+        )
+        if profile.custom_fields:
+            for key, value in profile.custom_fields.items():
+                profile_context += f"- {key.capitalize()}: {value}\n"
+        profile_context += "\nPor favor usa este contexto para proporcionar sugerencias de campos y validaciones más relevantes y adaptadas.\n\n"
+    else:
+        profile_context = (
+            "=== USER PROFILE CONTEXT ===\n"
+            "The form is being filled out by a user with the following profile:\n"
+            f"- Name: {profile.name}\n"
+            f"- Profession: {profile.profession}\n"
+            f"- Role: {profile.role}\n"
+            f"- Description: {desc}\n"
+        )
+        if profile.custom_fields:
+            for key, value in profile.custom_fields.items():
+                profile_context += f"- {key.capitalize()}: {value}\n"
+        profile_context += "\nPlease use this context to provide more relevant and tailored field suggestions and validations.\n\n"
+
     return profile_context + base_prompt
 
 
-def fill(pdf_path, narrative, out_path=None, model=None, description="", provider=None, registry=None, profile: Profile = None):
+def fill(
+    pdf_path,
+    narrative,
+    out_path=None,
+    model=None,
+    description="",
+    provider=None,
+    registry=None,
+    profile: Profile = None,
+    language: str = "en",
+):
     """Fill pdf_path from the narrative. Writes the PDF when out_path is given.
 
     Returns {schema, tables, groups, prompt, response_text, values}: the
@@ -58,7 +99,7 @@ def fill(pdf_path, narrative, out_path=None, model=None, description="", provide
     schema, tables, groups = template.create_template(pdf_path)
     strip_empty_descriptions(schema["properties"])
 
-    prompt = build_prompt(narrative, schema, description, profile)
+    prompt = build_prompt(narrative, schema, description, profile, language=language)
     response_text = call_model(prompt, schema, model, provider, registry=registry)
 
     # Tables come back as arrays of rows; map them to widget names
@@ -86,7 +127,7 @@ def strip_empty_descriptions(props):
     return props
 
 
-def build_prompt(narrative, schema, description="", profile: Profile = None):
+def build_prompt(narrative, schema, description="", profile: Profile = None, language: str = "en"):
     # Omitted entirely when blank so the model is not handed an empty block.
     context = f"<template_description>\n{description}\n</template_description>\n\n" if description else ""
     user_content = (
@@ -97,8 +138,8 @@ def build_prompt(narrative, schema, description="", profile: Profile = None):
         + json.dumps(schema["properties"], indent=2, ensure_ascii=False)
         + "\n</target_json_schema>"
     )
-    base_prompt = PROMPT.rstrip() + "\n\n" + user_content
-    return append_profile_context(base_prompt, profile)
+    base_prompt = get_base_prompt(language).rstrip() + "\n\n" + user_content
+    return append_profile_context(base_prompt, profile, language=language)
 
 
 def call_model(prompt, schema, model=None, provider=None, registry=None):

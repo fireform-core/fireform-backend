@@ -65,8 +65,9 @@ def submit_async_form_fill(form: AsyncFormFill, db: Session = Depends(get_db)):
         job.celery_task_id = job.job_id
         job = create_job(db, job)
         try:
+            lang_val = form.language.value if hasattr(form.language, "value") else str(form.language)
             fill_form_task.apply_async(
-                (tid, transcript, str(form.input_id), choice.model, choice.provider.value),
+                (tid, transcript, str(form.input_id), choice.model, choice.provider.value, lang_val),
                 task_id=job.celery_task_id,
             )
         except Exception as e:

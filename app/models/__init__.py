@@ -10,6 +10,7 @@ from app.models.models import (
     LLMManualModel,
     LLMProviderCredential,
     LLMRuntimeConfig,
+    Profile,
     Report,
     Template,
 )
@@ -24,6 +25,7 @@ __all__ = [
     "LLMManualModel",
     "LLMProviderCredential",
     "LLMRuntimeConfig",
+    "Profile",
     "Report",
     "Template",
 ]

@@ -128,3 +128,8 @@ class HealthState(str, Enum):
     healthy = "healthy"
     degraded = "degraded"
     unhealthy = "unhealthy"
+
+
+class SupportedLanguage(str, Enum):
+    en = "en"
+    es = "es"

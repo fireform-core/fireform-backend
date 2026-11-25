@@ -33,6 +33,11 @@ FormFillRequest:
       nullable: true
       description: Model to fill with. Must be one GET /system/llm/models lists
         under the chosen provider. Defaults to that provider's default model.
+    language:
+      allOf:
+        - $ref: "enums.yaml#/SupportedLanguage"
+      default: "en"
+      description: Target language for prompt generation and form filling (e.g. en, es)
 
 FormFillResponse:
   type: object
@@ -86,6 +91,11 @@ AsyncFormFillRequest:
       nullable: true
       description: Model to fill with. Must be one GET /system/llm/models lists
         under the chosen provider. Defaults to that provider's default model.
+    language:
+      allOf:
+        - $ref: "enums.yaml#/SupportedLanguage"
+      default: "en"
+      description: Target language for prompt generation and form filling (e.g. en, es)
 
 AsyncFormFillResponse:
   type: object

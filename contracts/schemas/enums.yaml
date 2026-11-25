@@ -118,3 +118,11 @@ HealthState:
     - degraded
     - unhealthy
   description: Health status of a system component or the overall system
+
+SupportedLanguage:
+  type: string
+  enum:
+    - en
+    - es
+  default: en
+  description: Target language for prompt generation and form filling

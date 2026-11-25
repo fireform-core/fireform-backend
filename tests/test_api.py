@@ -320,6 +320,24 @@ class TestFormEndpoints:
         fetched = db.get(FormSubmission, data["id"])
         assert fetched.input_id == input_id
 
+    def test_fill_form_with_language_spanish(self, client, mock_controller, db, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.core.paths.PROJECT_ROOT", tmp_path)
+        pdf_file = tmp_path / "employee.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4 fake")
+        tpl_id = self._seed_template_at(client, str(pdf_file.relative_to(tmp_path)))
+        input_id = self._seed_input(db)
+
+        resp = client.post(f"{API_PREFIX}/forms/fill", json={
+            "template_id": tpl_id,
+            "input_id": str(input_id),
+            "language": "es",
+        })
+        assert resp.status_code == 200
+        call_kwargs = mock_controller["mock_fill"].call_args.kwargs
+        assert call_kwargs["language"] == "es"
+        assert call_kwargs["pdf_path"] == str(pdf_file)
+        assert call_kwargs["narrative"] == "The employee is John Doe, email jdoe@ucsc.edu"
+
     def test_fill_form_with_direct_input_text(self, client, mock_controller, db, tmp_path, monkeypatch):
         monkeypatch.setattr("app.core.paths.PROJECT_ROOT", tmp_path)
         pdf_file = tmp_path / "employee.pdf"

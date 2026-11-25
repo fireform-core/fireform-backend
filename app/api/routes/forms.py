@@ -42,6 +42,7 @@ def fill_form(request: Request, form: FormFill, db: Session = Depends(get_db)):
             input_text=form.input_text,
             provider=form.provider,
             model=form.model,
+            language=form.language.value if hasattr(form.language, "value") else str(form.language),
         )
         return FormFillResponse(
             id=submission.id,

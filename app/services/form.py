@@ -45,6 +45,7 @@ class FormService:
         input_text: str | None = None,
         provider: LLMProvider | None = None,
         model: str | None = None,
+        language: str = "en",
     ) -> FormSubmission:
         # Before anything is stored, so a bad pick leaves no stray input behind
         registry = llm.effective_registry(session)
@@ -70,7 +71,14 @@ class FormService:
         else:
             raise AppError("Either input_id or input_text is required", status_code=422, error_code="VALIDATION_ERROR")
         return self.fill_and_persist(
-            session, template, transcript, input_id, choice.model, choice.provider, registry=registry
+            session,
+            template,
+            transcript,
+            input_id,
+            choice.model,
+            choice.provider,
+            registry=registry,
+            language=language,
         )
 
     def fill_and_persist(
@@ -82,6 +90,7 @@ class FormService:
         model: str | None = None,
         provider: LLMProvider | None = None,
         registry=None,
+        language: str = "en",
     ) -> FormSubmission:
         registry = registry or llm.effective_registry(session)
         resolved_pdf = paths._resolve_project_file(template.pdf_path)
@@ -113,6 +122,7 @@ class FormService:
             model=model,
             description=template.description,
             registry=registry,
+            language=language,
         )
 
         relative_out = paths.make_storable_path(out_target)

@@ -11,6 +11,7 @@ class FormFill(BaseModel):
     input_id: UUID | None = None
     provider: LLMProvider | None = None
     model: str | None = None
+    include_profile_context: bool = False
 
 
 class FormFillResponse(BaseModel):
@@ -37,6 +38,7 @@ class AsyncFormFill(BaseModel):
     input_id: UUID
     provider: LLMProvider | None = None
     model: str | None = None
+    include_profile_context: bool = False
 
     @field_validator("template_ids")
     def validate_template_ids(cls, value):

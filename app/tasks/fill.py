@@ -8,6 +8,7 @@ from app.core.celery import celery_app
 from app.core.errors.base import AppError
 from app.db.database import get_session
 from app.db.repositories import get_job_by_celery_id, get_template, update_job
+from app.models.models import Profile
 from app.services.form import FormService
 
 logger = logging.getLogger(__name__)
@@ -15,7 +16,13 @@ logger = logging.getLogger(__name__)
 
 @celery_app.task(bind=True, name="fill_form")
 def fill_form_task(
-    self, template_id: int, input_text: str, input_id_str: str, model: str | None = None, provider: str | None = None
+    self,
+    template_id: int,
+    input_text: str,
+    input_id_str: str,
+    model: str | None = None,
+    provider: str | None = None,
+    profile: dict | None = None,
 ):
     session = next(get_session())
     try:
@@ -33,7 +40,8 @@ def fill_form_task(
             raise ValueError(f"Template {template_id} not found")
 
         submission = FormService().fill_and_persist(
-            session, template, input_text, UUID(input_id_str), model, provider
+            session, template, input_text, UUID(input_id_str), model, provider,
+            profile=Profile(**profile) if profile else None,
         )
 
         job.status = JobStatus.completed

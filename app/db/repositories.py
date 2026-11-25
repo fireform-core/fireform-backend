@@ -4,6 +4,7 @@ from uuid import UUID
 from sqlmodel import Session, select
 
 from app.models import FormSubmission, Input, Job, Report, Template
+from app.models.models import Profile
 
 
 # Templates
@@ -27,6 +28,11 @@ def update_template(session: Session, template: Template) -> Template:
     session.commit()
     session.refresh(template)
     return template
+
+# Profiles
+def get_current_profile(session: Session) -> Profile | None:
+    return session.exec(select(Profile).order_by(Profile.updated_at.desc())).first()
+
 
 # Forms
 def create_form(session: Session, form: FormSubmission) -> FormSubmission:

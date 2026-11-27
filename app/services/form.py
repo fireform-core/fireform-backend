@@ -147,7 +147,6 @@ class FormService:
 
         template_counts = Counter()
         daily_counts = Counter()
-        words = []
 
         for sub, name in results:
             template_name = name or "Unknown Template"
@@ -157,21 +156,65 @@ class FormService:
                 date_str = sub.created_at.strftime("%Y-%m-%d")
                 daily_counts[date_str] += 1
 
-            if sub.input_text:
-                found_words = re.findall(r"\b[a-zA-Z]{3,15}\b", sub.input_text.lower())
-                for w in found_words:
-                    if w not in _STOPWORDS:
-                        words.append(w)
+        all_narratives = " ".join(sub.input_text.lower() for sub, _ in results if sub.input_text)
+        found_words = re.findall(r"\b[a-zA-Z]{3,15}\b", all_narratives)
+        filtered_words = [w for w in found_words if w not in _STOPWORDS]
+        common_terms = [{"word": k, "count": v} for k, v in Counter(filtered_words).most_common(12)]
 
         sorted_daily = [{"date": k, "count": v} for k, v in sorted(daily_counts.items())]
-        sorted_templates = [{"template_name": k, "count": v} for k, v in template_counts.most_common()]
-        common_terms = [{"word": k, "count": v} for k, v in Counter(words).most_common(12)]
+        sorted_templates = [
+            {
+                "template_name": k,
+                "count": v,
+                "percentage": round((v / total_submissions) * 100, 1) if total_submissions > 0 else 0.0,
+            }
+            for k, v in template_counts.most_common()
+        ]
+
+        active_day_count = len(daily_counts)
+        average_submissions_per_day = (
+            round(total_submissions / active_day_count, 2) if active_day_count > 0 else 0.0
+        )
+
+        peak_usage_day = None
+        if daily_counts:
+            peak_date, peak_count = max(daily_counts.items(), key=lambda item: (item[1], item[0]))
+            peak_usage_day = {"date": peak_date, "count": peak_count}
+
+        most_used_template = None
+        if sorted_templates:
+            top_template = sorted_templates[0]
+            most_used_template = {
+                "template_name": top_template["template_name"],
+                "count": top_template["count"],
+                "percentage": top_template["percentage"],
+            }
+
+        summary = {
+            "total_submissions": total_submissions,
+            "average_submissions_per_day": average_submissions_per_day,
+            "active_day_count": active_day_count,
+            "peak_usage_day": peak_usage_day,
+            "most_used_template": most_used_template,
+        }
+
+        charts = {
+            "template_distribution": sorted_templates,
+            "daily_activity_trend": sorted_daily,
+            "common_terms": common_terms,
+        }
 
         return {
             "total_submissions": total_submissions,
+            "average_submissions_per_day": average_submissions_per_day,
+            "active_day_count": active_day_count,
+            "peak_usage_day": peak_usage_day,
+            "most_used_template": most_used_template,
             "by_template": sorted_templates,
             "by_date": sorted_daily,
             "common_terms": common_terms,
+            "summary": summary,
+            "charts": charts,
         }
 
     def purge_submissions(self, session: Session, retention_days: int) -> int:

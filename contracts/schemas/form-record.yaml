@@ -167,12 +167,52 @@ SubmissionAnalytics:
   type: object
   required:
     - total_submissions
+    - average_submissions_per_day
+    - active_day_count
     - by_template
     - by_date
     - common_terms
+    - summary
+    - charts
   properties:
     total_submissions:
       type: integer
+      description: Total number of form submissions recorded
+      example: 3
+    average_submissions_per_day:
+      type: number
+      format: float
+      description: Average submissions per active day
+      example: 1.5
+    active_day_count:
+      type: integer
+      description: Number of days with at least one submission
+      example: 2
+    peak_usage_day:
+      type: object
+      nullable: true
+      properties:
+        date:
+          type: string
+          format: date
+          example: "2026-10-30"
+        count:
+          type: integer
+          example: 2
+    most_used_template:
+      type: object
+      nullable: true
+      properties:
+        template_name:
+          type: string
+          example: "ICS 209 Incident Status Summary"
+        count:
+          type: integer
+          example: 2
+        percentage:
+          type: number
+          format: float
+          example: 66.7
     by_template:
       type: array
       description: Submission count per template, most used first
@@ -183,6 +223,9 @@ SubmissionAnalytics:
             type: string
           count:
             type: integer
+          percentage:
+            type: number
+            format: float
     by_date:
       type: array
       description: Submission count per day, oldest first
@@ -204,3 +247,34 @@ SubmissionAnalytics:
             type: string
           count:
             type: integer
+    summary:
+      type: object
+      properties:
+        total_submissions:
+          type: integer
+        average_submissions_per_day:
+          type: number
+          format: float
+        active_day_count:
+          type: integer
+        peak_usage_day:
+          type: object
+          nullable: true
+        most_used_template:
+          type: object
+          nullable: true
+    charts:
+      type: object
+      properties:
+        template_distribution:
+          type: array
+          items:
+            type: object
+        daily_activity_trend:
+          type: array
+          items:
+            type: object
+        common_terms:
+          type: array
+          items:
+            type: object

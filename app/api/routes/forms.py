@@ -8,6 +8,7 @@ from app.api.schemas.forms import (
     FormFill,
     FormFillResponse,
     ModelsResponse,
+    SubmissionAnalyticsResponse,
     TranscriptionResponse,
 )
 from app.core import paths
@@ -144,6 +145,6 @@ def get_submissions(db: Session = Depends(get_db)):
     return FormService().list_submissions(db)
 
 
-@router.get("/submissions/analytics")
+@router.get("/submissions/analytics", response_model=SubmissionAnalyticsResponse)
 def get_submissions_analytics(db: Session = Depends(get_db)):
     return FormService().get_analytics(db)

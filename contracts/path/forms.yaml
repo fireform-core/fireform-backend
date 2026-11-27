@@ -5,6 +5,8 @@
 # POST   /api/v1/forms/transcribe
 # GET    /api/v1/forms/submissions
 # GET    /api/v1/forms/submissions/analytics
+# POST   /api/v1/forms/submissions/purge
+# DELETE /api/v1/forms/submissions/{submission_id}
 # POST   /api/v1/forms/purge
 # DELETE /api/v1/forms/{submission_id}
 
@@ -303,6 +305,14 @@ submissions:
     description: Returns every form submission with the name of its template.
     tags:
       - forms
+    parameters:
+      - name: profile_id
+        in: query
+        required: false
+        description: Optional profile ID to filter submissions
+        schema:
+          type: string
+          format: uuid
     responses:
       "200":
         description: List of submissions
@@ -316,6 +326,7 @@ submissions:
               - id: 12
                 template_id: 3
                 template_name: "ICS 209 Incident Status Summary"
+                profile_id: "550e8400-e29b-41d4-a716-446655440000"
                 input_text: "Structure fire on Main Street, two engines on scene."
                 output_pdf_path: "data/inputs/ics_209_20261030_101500_filled.pdf"
                 created_at: "2026-10-30T10:15:00"
@@ -329,6 +340,14 @@ submissions_analytics:
       most common words in the narratives (stop words removed).
     tags:
       - forms
+    parameters:
+      - name: profile_id
+        in: query
+        required: false
+        description: Optional profile ID to filter analytics
+        schema:
+          type: string
+          format: uuid
     responses:
       "200":
         description: Submission analytics
@@ -354,6 +373,88 @@ submissions_analytics:
                 - word: "engine"
                   count: 2
 
+submissions_purge:
+  post:
+    operationId: purgeUserSubmissions
+    summary: Purge submissions belonging to the current profile
+    description: |
+      Deletes submissions owned by the current user profile (and their output PDFs).
+      If `days` is given, deletes only submissions older than `days` days. If omitted,
+      purges all submissions belonging to the current profile.
+    tags:
+      - forms
+    parameters:
+      - name: days
+        in: query
+        required: false
+        description: Optional retention window in days (1-3650). If omitted, purges all submissions for current user.
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 3650
+    responses:
+      "200":
+        description: User submissions deleted
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/form-record.yaml#/PurgeResponse"
+            example:
+              status: "success"
+              purged_count: 2
+              retention_days_used: 30
+              profile_id: "550e8400-e29b-41d4-a716-446655440000"
+      "404":
+        description: No active profile found
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/common.yaml#/ErrorResponse"
+      "422":
+        description: days is outside 1-3650
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/common.yaml#/ErrorResponse"
+
+user_submission_by_id:
+  delete:
+    operationId: deleteUserSubmission
+    summary: Delete one submission owned by the current profile
+    description: |
+      Deletes the specified submission and its output PDF if it belongs to the
+      current user profile. Returns 403 if owned by another profile.
+    tags:
+      - forms
+    parameters:
+      - name: submission_id
+        in: path
+        required: true
+        schema:
+          type: integer
+    responses:
+      "200":
+        description: Submission deleted
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/common.yaml#/StatusMessage"
+            example:
+              status: "success"
+              message: "Submission 12 deleted successfully"
+      "403":
+        description: Not authorized to delete this submission
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/common.yaml#/ErrorResponse"
+      "404":
+        description: Profile or submission not found
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/common.yaml#/ErrorResponse"
+
 purge:
   post:
     operationId: purgeSubmissions
@@ -377,28 +478,25 @@ purge:
           type: integer
           minimum: 1
           maximum: 3650
+      - name: profile_id
+        in: query
+        required: false
+        description: Optional profile ID to scope the purge
+        schema:
+          type: string
+          format: uuid
     responses:
       "200":
         description: Old submissions deleted
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - status
-                - purged_count
-                - retention_days_used
-              properties:
-                status:
-                  type: string
-                purged_count:
-                  type: integer
-                retention_days_used:
-                  type: integer
+              $ref: "../schemas/form-record.yaml#/PurgeResponse"
             example:
               status: "success"
               purged_count: 4
               retention_days_used: 30
+              profile_id: null
       "401":
         description: Missing or wrong API key
         content:

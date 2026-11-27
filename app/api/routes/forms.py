@@ -1,23 +1,28 @@
 import logging
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, UploadFile, Query, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from sqlmodel import Session
 
 from app.api.deps import get_db, verify_api_key
+from app.api.middleware.rate_limiter import limiter
+from app.api.routes.profiles import get_current_profile
 from app.api.schemas.forms import (
     FormFill,
     FormFillResponse,
+    FormSubmissionResponse,
     ModelsResponse,
+    PurgeResponse,
     TranscriptionResponse,
 )
 from app.core import paths
 from app.core.config import RETENTION_PERIOD_DAYS
-from app.services import llm
-from app.services.whisper import call_whisper_asr
 from app.core.errors.base import AppError
-from app.db.repositories import get_template, get_form_submission, delete_form_submission
+from app.db.repositories import delete_form_submission, get_form_submission, get_template
+from app.models.models import Profile
+from app.services import llm
 from app.services.form import FormService
-from app.api.middleware.rate_limiter import limiter
+from app.services.whisper import call_whisper_asr
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +47,12 @@ def fill_form(request: Request, form: FormFill, db: Session = Depends(get_db)):
             input_text=form.input_text,
             provider=form.provider,
             model=form.model,
+            profile_id=form.profile_id,
         )
         return FormFillResponse(
             id=submission.id,
             template_id=submission.template_id,
+            profile_id=submission.profile_id,
             input_text=submission.input_text,
             output_pdf_path=submission.output_pdf_path,
         )
@@ -129,21 +136,75 @@ def delete_submission_endpoint(submission_id: int, db: Session = Depends(get_db)
     return {"status": "success", "message": "Submission and associated output file deleted"}
 
 
-@router.post("/purge", dependencies=[Depends(verify_api_key)])
+@router.post("/purge", dependencies=[Depends(verify_api_key)], response_model=PurgeResponse)
 def purge_submissions_endpoint(
     days: int | None = Query(default=None, ge=1, le=3650, description="Retention window in days (must be >= 1)"),
+    profile_id: UUID | None = Query(default=None, description="Optional profile ID to scope purge"),
     db: Session = Depends(get_db),
 ):
     retention_days = days if days is not None else RETENTION_PERIOD_DAYS
-    purged_count = FormService().purge_submissions(db, retention_days)
-    return {"status": "success", "purged_count": purged_count, "retention_days_used": retention_days}
+    purged_count = FormService().purge_submissions(
+        db, retention_days=retention_days, profile_id=profile_id
+    )
+    return PurgeResponse(
+        status="success",
+        purged_count=purged_count,
+        retention_days_used=retention_days,
+        profile_id=profile_id,
+    )
 
 
-@router.get("/submissions")
-def get_submissions(db: Session = Depends(get_db)):
-    return FormService().list_submissions(db)
+@router.get("/submissions", response_model=list[FormSubmissionResponse])
+def get_submissions(
+    profile_id: UUID | None = Query(default=None, description="Optional profile ID to filter submissions"),
+    db: Session = Depends(get_db),
+):
+    return FormService().list_submissions(db, profile_id=profile_id)
 
 
 @router.get("/submissions/analytics")
-def get_submissions_analytics(db: Session = Depends(get_db)):
-    return FormService().get_analytics(db)
+def get_submissions_analytics(
+    profile_id: UUID | None = Query(default=None, description="Optional profile ID to filter analytics"),
+    db: Session = Depends(get_db),
+):
+    return FormService().get_analytics(db, profile_id=profile_id)
+
+
+@router.post("/submissions/purge", response_model=PurgeResponse)
+def purge_user_submissions_endpoint(
+    days: int | None = Query(
+        default=None,
+        ge=1,
+        le=3650,
+        description="Optional retention window in days (must be >= 1). If omitted, purges all submissions for current user",
+    ),
+    current_profile: Profile | None = Depends(get_current_profile),
+    db: Session = Depends(get_db),
+):
+    if current_profile is None:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    purged_count = FormService().purge_submissions(
+        db, retention_days=days, profile_id=current_profile.profile_id
+    )
+    return PurgeResponse(
+        status="success",
+        purged_count=purged_count,
+        retention_days_used=days,
+        profile_id=current_profile.profile_id,
+    )
+
+
+@router.delete("/submissions/{submission_id}")
+def delete_user_submission_endpoint(
+    submission_id: int,
+    current_profile: Profile | None = Depends(get_current_profile),
+    db: Session = Depends(get_db),
+):
+    if current_profile is None:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    deleted = FormService().delete_user_submission(
+        db, submission_id, current_profile.profile_id
+    )
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Submission not found")
+    return {"status": "success", "message": f"Submission {submission_id} deleted successfully"}

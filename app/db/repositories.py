@@ -36,24 +36,45 @@ def create_form(session: Session, form: FormSubmission) -> FormSubmission:
     return form
 
 
-def get_submissions(session: Session) -> list[tuple[FormSubmission, str | None]]:
+def get_all_submissions(
+    session: Session, profile_id: UUID | None = None
+) -> list[FormSubmission]:
+    statement = select(FormSubmission)
+    if profile_id is not None:
+        statement = statement.where(FormSubmission.profile_id == profile_id)
+    return list(session.exec(statement))
+
+
+def get_submissions(
+    session: Session, profile_id: UUID | None = None
+) -> list[tuple[FormSubmission, str | None]]:
     statement = (
         select(FormSubmission, Template.name)
         .join(Template, FormSubmission.template_id == Template.id, isouter=True)
         .order_by(FormSubmission.created_at.desc(), FormSubmission.id.desc())
     )
+    if profile_id is not None:
+        statement = statement.where(FormSubmission.profile_id == profile_id)
     return list(session.exec(statement).all())
 
 
-def get_submissions_with_template(session: Session) -> list[tuple[FormSubmission, str | None]]:
+def get_submissions_with_template(
+    session: Session, profile_id: UUID | None = None
+) -> list[tuple[FormSubmission, str | None]]:
     statement = select(FormSubmission, Template.name).join(
         Template, FormSubmission.template_id == Template.id, isouter=True
     )
+    if profile_id is not None:
+        statement = statement.where(FormSubmission.profile_id == profile_id)
     return list(session.exec(statement).all())
 
 
-def get_submissions_before(session: Session, cutoff: datetime) -> list[FormSubmission]:
+def get_submissions_before(
+    session: Session, cutoff: datetime, profile_id: UUID | None = None
+) -> list[FormSubmission]:
     statement = select(FormSubmission).where(FormSubmission.created_at < cutoff)
+    if profile_id is not None:
+        statement = statement.where(FormSubmission.profile_id == profile_id)
     return list(session.exec(statement))
 
 

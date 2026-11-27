@@ -56,6 +56,10 @@ paths:
     $ref: "path/forms.yaml#/submissions"
   /api/v1/forms/submissions/analytics:
     $ref: "path/forms.yaml#/submissions_analytics"
+  /api/v1/forms/submissions/purge:
+    $ref: "path/forms.yaml#/submissions_purge"
+  /api/v1/forms/submissions/{submission_id}:
+    $ref: "path/forms.yaml#/user_submission_by_id"
   /api/v1/forms/purge:
     $ref: "path/forms.yaml#/purge"
   /api/v1/forms/{submission_id}:

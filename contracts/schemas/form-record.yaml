@@ -22,6 +22,11 @@ FormFillRequest:
       nullable: true
       description: Narrative to fill from directly. If input_id is not sent, it
         is stored as a new text input before filling.
+    profile_id:
+      type: string
+      format: uuid
+      nullable: true
+      description: Optional profile ID creating this submission
     provider:
       allOf:
         - $ref: "enums.yaml#/LLMProvider"
@@ -46,6 +51,11 @@ FormFillResponse:
       type: integer
     template_id:
       type: integer
+    profile_id:
+      type: string
+      format: uuid
+      nullable: true
+      description: Profile ID owning this submission
     input_text:
       type: string
     output_pdf_path:
@@ -153,6 +163,11 @@ Submission:
     template_name:
       type: string
       description: Name of the template, or "Unknown Template" if it no longer exists
+    profile_id:
+      type: string
+      format: uuid
+      nullable: true
+      description: Profile ID owning this submission
     input_text:
       type: string
       nullable: true
@@ -204,3 +219,22 @@ SubmissionAnalytics:
             type: string
           count:
             type: integer
+
+PurgeResponse:
+  type: object
+  required:
+    - status
+    - purged_count
+  properties:
+    status:
+      type: string
+    purged_count:
+      type: integer
+    retention_days_used:
+      type: integer
+      nullable: true
+    profile_id:
+      type: string
+      format: uuid
+      nullable: true
+      description: Profile ID if purge was scoped to a user

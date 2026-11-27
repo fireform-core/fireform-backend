@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.api.schemas.enums import JobStatus, JobType, LLMProvider
 
@@ -9,6 +9,7 @@ class FormFill(BaseModel):
     template_id: int
     input_text: str | None = None
     input_id: UUID | None = None
+    profile_id: UUID | None = Field(default=None, description="Optional profile ID creating this submission")
     provider: LLMProvider | None = None
     model: str | None = None
 
@@ -16,11 +17,31 @@ class FormFill(BaseModel):
 class FormFillResponse(BaseModel):
     id: int
     template_id: int
+    profile_id: UUID | None = Field(default=None, description="Profile ID owning this submission")
     input_text: str
     output_pdf_path: str
     values: dict | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class FormSubmissionResponse(BaseModel):
+    id: int
+    template_id: int
+    template_name: str
+    profile_id: UUID | None = Field(default=None, description="Profile ID owning this submission")
+    input_text: str | None = None
+    output_pdf_path: str
+    created_at: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PurgeResponse(BaseModel):
+    status: str
+    purged_count: int
+    retention_days_used: int | None = None
+    profile_id: UUID | None = Field(default=None, description="Profile ID if purge was scoped to a user")
 
 
 class TranscriptionResponse(BaseModel):

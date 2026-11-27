@@ -3,6 +3,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
+from fastapi import HTTPException
 from sqlmodel import Session
 
 from app.api.schemas.enums import LLMProvider
@@ -12,6 +13,8 @@ from app.core.errors.base import AppError
 from app.db.repositories import (
     create_form,
     delete_form_submission,
+    get_all_submissions,
+    get_form_submission,
     get_submissions,
     get_submissions_before,
     get_submissions_with_template,
@@ -33,6 +36,17 @@ _STOPWORDS = {
 }
 
 
+def _unlink_submission_pdf(output_pdf_path: str | None) -> None:
+    if not output_pdf_path:
+        return
+    try:
+        resolved_out = paths._resolve_project_file(output_pdf_path)
+        if resolved_out.exists() and resolved_out.is_file():
+            resolved_out.unlink()
+    except Exception:
+        pass
+
+
 class FormService:
     def __init__(self):
         self.input_service = InputService()
@@ -45,6 +59,7 @@ class FormService:
         input_text: str | None = None,
         provider: LLMProvider | None = None,
         model: str | None = None,
+        profile_id: UUID | None = None,
     ) -> FormSubmission:
         # Before anything is stored, so a bad pick leaves no stray input behind
         registry = llm.effective_registry(session)
@@ -70,7 +85,14 @@ class FormService:
         else:
             raise AppError("Either input_id or input_text is required", status_code=422, error_code="VALIDATION_ERROR")
         return self.fill_and_persist(
-            session, template, transcript, input_id, choice.model, choice.provider, registry=registry
+            session,
+            template,
+            transcript,
+            input_id,
+            choice.model,
+            choice.provider,
+            registry=registry,
+            profile_id=profile_id,
         )
 
     def fill_and_persist(
@@ -82,6 +104,7 @@ class FormService:
         model: str | None = None,
         provider: LLMProvider | None = None,
         registry=None,
+        profile_id: UUID | None = None,
     ) -> FormSubmission:
         registry = registry or llm.effective_registry(session)
         resolved_pdf = paths._resolve_project_file(template.pdf_path)
@@ -120,19 +143,22 @@ class FormService:
         submission = FormSubmission(
             template_id=template.id,
             input_id=input_id,
+            profile_id=profile_id,
             input_text=transcript,
             output_pdf_path=relative_out,
         )
         return create_form(session, submission)
 
-
-    def list_submissions(self, session: Session) -> list[dict]:
-        results = get_submissions(session)
+    def list_submissions(
+        self, session: Session, profile_id: UUID | None = None
+    ) -> list[dict]:
+        results = get_submissions(session, profile_id=profile_id)
         return [
             {
                 "id": sub.id,
                 "template_id": sub.template_id,
                 "template_name": name or "Unknown Template",
+                "profile_id": sub.profile_id,
                 "input_text": sub.input_text,
                 "output_pdf_path": sub.output_pdf_path,
                 "created_at": sub.created_at.isoformat() if sub.created_at else None,
@@ -140,8 +166,8 @@ class FormService:
             for sub, name in results
         ]
 
-    def get_analytics(self, session: Session) -> dict:
-        results = get_submissions_with_template(session)
+    def get_analytics(self, session: Session, profile_id: UUID | None = None) -> dict:
+        results = get_submissions_with_template(session, profile_id=profile_id)
 
         total_submissions = len(results)
 
@@ -159,9 +185,7 @@ class FormService:
 
             if sub.input_text:
                 found_words = re.findall(r"\b[a-zA-Z]{3,15}\b", sub.input_text.lower())
-                for w in found_words:
-                    if w not in _STOPWORDS:
-                        words.append(w)
+                words.extend(w for w in found_words if w not in _STOPWORDS)
 
         sorted_daily = [{"date": k, "count": v} for k, v in sorted(daily_counts.items())]
         sorted_templates = [{"template_name": k, "count": v} for k, v in template_counts.most_common()]
@@ -174,20 +198,38 @@ class FormService:
             "common_terms": common_terms,
         }
 
-    def purge_submissions(self, session: Session, retention_days: int) -> int:
-        cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
-        submissions = get_submissions_before(session, cutoff_date)
+    def purge_submissions(
+        self,
+        session: Session,
+        retention_days: int | None = None,
+        profile_id: UUID | None = None,
+    ) -> int:
+        if retention_days is not None:
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
+            submissions = get_submissions_before(session, cutoff_date, profile_id=profile_id)
+        elif profile_id is not None:
+            submissions = get_all_submissions(session, profile_id=profile_id)
+        else:
+            return 0
 
         purged_count = 0
         for sub in submissions:
-            if sub.output_pdf_path:
-                try:
-                    resolved_out = paths._resolve_project_file(sub.output_pdf_path)
-                    if resolved_out.exists() and resolved_out.is_file():
-                        resolved_out.unlink()
-                except Exception:
-                    pass
+            _unlink_submission_pdf(sub.output_pdf_path)
             delete_form_submission(session, sub)
             purged_count += 1
 
         return purged_count
+
+    def delete_user_submission(
+        self, session: Session, submission_id: int, profile_id: UUID
+    ) -> bool:
+        submission = get_form_submission(session, submission_id)
+        if not submission:
+            return False
+        if submission.profile_id != profile_id:
+            raise HTTPException(
+                status_code=403, detail="Not authorized to delete this submission"
+            )
+        _unlink_submission_pdf(submission.output_pdf_path)
+        delete_form_submission(session, submission)
+        return True

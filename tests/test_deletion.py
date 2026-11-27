@@ -8,6 +8,7 @@ import pytest
 
 from app.core.config import API_PREFIX
 from app.models import FormSubmission, Template
+from app.models.models import Profile
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -24,9 +25,10 @@ def _seed_template(client, name="T1", pdf_path="src/inputs/t.pdf"):
     return resp.json()["id"]
 
 
-def _seed_submission(db, template_id, output_pdf_path="src/outputs/out.pdf"):
+def _seed_submission(db, template_id, output_pdf_path="src/outputs/out.pdf", profile_id=None):
     sub = FormSubmission(
         template_id=template_id,
+        profile_id=profile_id,
         input_text="John Doe, firefighter",
         output_pdf_path=output_pdf_path,
     )
@@ -34,6 +36,19 @@ def _seed_submission(db, template_id, output_pdf_path="src/outputs/out.pdf"):
     db.commit()
     db.refresh(sub)
     return sub.id
+
+
+def _seed_profile(db, name="User A", updated_at=None):
+    profile = Profile(
+        name=name,
+        profession="Firefighter",
+        role="Captain",
+        updated_at=updated_at or datetime.now(timezone.utc),
+    )
+    db.add(profile)
+    db.commit()
+    db.refresh(profile)
+    return profile
 
 
 # ===========================================================================
@@ -298,3 +313,206 @@ class TestApiKeyAccessControl:
             headers={"X-API-Key": "secret-test-key"},
         )
         assert resp.status_code == 200
+
+
+# ===========================================================================
+# User-Owned Submissions Purge & Deletion
+# ===========================================================================
+
+class TestUserSubmissionPurge:
+
+    def _seed_old_submission(
+        self, db, tpl_id, profile_id=None, days_old=40, output_pdf_path="src/outputs/old.pdf"
+    ):
+        old_ts = datetime.now(timezone.utc) - timedelta(days=days_old)
+        sub = FormSubmission(
+            template_id=tpl_id,
+            profile_id=profile_id,
+            input_text="old data",
+            output_pdf_path=output_pdf_path,
+            created_at=old_ts,
+        )
+        db.add(sub)
+        db.commit()
+        db.refresh(sub)
+        return sub.id
+
+    def test_user_purge_with_retention_days(self, client, db):
+        tpl_id = _seed_template(client)
+        profile = _seed_profile(db, name="User A")
+        old_id = self._seed_old_submission(db, tpl_id, profile_id=profile.profile_id, days_old=40)
+        new_id = _seed_submission(db, tpl_id, profile_id=profile.profile_id)
+
+        resp = client.post(f"{API_PREFIX}/forms/submissions/purge?days=30")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "success"
+        assert body["purged_count"] == 1
+        assert body["retention_days_used"] == 30
+        assert body["profile_id"] == str(profile.profile_id)
+
+        assert db.get(FormSubmission, old_id) is None
+        assert db.get(FormSubmission, new_id) is not None
+
+    def test_user_purge_without_retention_days_deletes_all_owned(self, client, db, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.core.paths.PROJECT_ROOT", tmp_path)
+        pdf_old = tmp_path / "u_old.pdf"
+        pdf_new = tmp_path / "u_new.pdf"
+        pdf_old.write_bytes(b"%PDF-1.4")
+        pdf_new.write_bytes(b"%PDF-1.4")
+
+        tpl_id = _seed_template(client)
+        profile = _seed_profile(db, name="User A")
+        old_id = self._seed_old_submission(
+            db, tpl_id, profile_id=profile.profile_id, days_old=40, output_pdf_path="u_old.pdf"
+        )
+        new_id = _seed_submission(
+            db, tpl_id, output_pdf_path="u_new.pdf", profile_id=profile.profile_id
+        )
+
+        resp = client.post(f"{API_PREFIX}/forms/submissions/purge")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "success"
+        assert body["purged_count"] == 2
+        assert body["retention_days_used"] is None
+        assert body["profile_id"] == str(profile.profile_id)
+
+        assert db.get(FormSubmission, old_id) is None
+        assert db.get(FormSubmission, new_id) is None
+        assert not pdf_old.exists()
+        assert not pdf_new.exists()
+
+    def test_user_purge_isolation(self, client, db):
+        """Purging current user's submissions must not delete another user's or unowned submissions."""
+        tpl_id = _seed_template(client)
+        now = datetime.now(timezone.utc)
+        profile_b = _seed_profile(db, name="User B", updated_at=now - timedelta(hours=1))
+        profile_a = _seed_profile(db, name="User A", updated_at=now)
+
+        sub_a_old = self._seed_old_submission(db, tpl_id, profile_id=profile_a.profile_id, days_old=40)
+        sub_a_new = _seed_submission(db, tpl_id, profile_id=profile_a.profile_id)
+        sub_b_old = self._seed_old_submission(db, tpl_id, profile_id=profile_b.profile_id, days_old=40)
+        sub_unowned = _seed_submission(db, tpl_id, profile_id=None)
+
+        resp = client.post(f"{API_PREFIX}/forms/submissions/purge")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["purged_count"] == 2
+        assert body["profile_id"] == str(profile_a.profile_id)
+
+        assert db.get(FormSubmission, sub_a_old) is None
+        assert db.get(FormSubmission, sub_a_new) is None
+        assert db.get(FormSubmission, sub_b_old) is not None
+        assert db.get(FormSubmission, sub_unowned) is not None
+
+    def test_user_purge_no_profile_returns_404(self, client):
+        resp = client.post(f"{API_PREFIX}/forms/submissions/purge")
+        assert resp.status_code == 404
+
+    def test_user_purge_invalid_days_returns_422(self, client, db):
+        tpl_id = _seed_template(client)
+        profile = _seed_profile(db, name="User A")
+        sub_id = _seed_submission(db, tpl_id, profile_id=profile.profile_id)
+
+        assert client.post(f"{API_PREFIX}/forms/submissions/purge?days=0").status_code == 422
+        assert client.post(f"{API_PREFIX}/forms/submissions/purge?days=-5").status_code == 422
+        assert db.get(FormSubmission, sub_id) is not None
+
+    def test_user_delete_specific_submission(self, client, db, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.core.paths.PROJECT_ROOT", tmp_path)
+        out_pdf = tmp_path / "user_sub.pdf"
+        out_pdf.write_bytes(b"%PDF-1.4")
+
+        tpl_id = _seed_template(client)
+        profile = _seed_profile(db, name="User A")
+        sub_id = _seed_submission(
+            db, tpl_id, output_pdf_path="user_sub.pdf", profile_id=profile.profile_id
+        )
+
+        resp = client.delete(f"{API_PREFIX}/forms/submissions/{sub_id}")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "success"
+        assert db.get(FormSubmission, sub_id) is None
+        assert not out_pdf.exists()
+
+    def test_user_delete_other_users_submission_returns_403(self, client, db):
+        tpl_id = _seed_template(client)
+        now = datetime.now(timezone.utc)
+        profile_b = _seed_profile(db, name="User B", updated_at=now - timedelta(hours=1))
+        _seed_profile(db, name="User A", updated_at=now)
+        sub_b = _seed_submission(db, tpl_id, profile_id=profile_b.profile_id)
+
+        resp = client.delete(f"{API_PREFIX}/forms/submissions/{sub_b}")
+        assert resp.status_code == 403
+        assert db.get(FormSubmission, sub_b) is not None
+
+    def test_user_delete_nonexistent_submission_returns_404(self, client, db):
+        _seed_profile(db, name="User A")
+        resp = client.delete(f"{API_PREFIX}/forms/submissions/99999")
+        assert resp.status_code == 404
+
+    def test_user_delete_no_profile_returns_404(self, client, db):
+        tpl_id = _seed_template(client)
+        sub_id = _seed_submission(db, tpl_id)
+        resp = client.delete(f"{API_PREFIX}/forms/submissions/{sub_id}")
+        assert resp.status_code == 404
+
+    def test_admin_purge_scoped_by_profile_id(self, client, db):
+        tpl_id = _seed_template(client)
+        profile_a = _seed_profile(db, name="User A")
+        profile_b = _seed_profile(db, name="User B")
+        sub_a_old = self._seed_old_submission(db, tpl_id, profile_id=profile_a.profile_id, days_old=40)
+        sub_b_old = self._seed_old_submission(db, tpl_id, profile_id=profile_b.profile_id, days_old=40)
+
+        resp = client.post(
+            f"{API_PREFIX}/forms/purge?days=30&profile_id={profile_a.profile_id}"
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["purged_count"] == 1
+        assert body["profile_id"] == str(profile_a.profile_id)
+        assert db.get(FormSubmission, sub_a_old) is None
+        assert db.get(FormSubmission, sub_b_old) is not None
+
+    def test_list_and_analytics_filter_by_profile_id(self, client, db):
+        tpl_id = _seed_template(client)
+        profile_a = _seed_profile(db, name="User A")
+        profile_b = _seed_profile(db, name="User B")
+        _seed_submission(db, tpl_id, profile_id=profile_a.profile_id)
+        _seed_submission(db, tpl_id, profile_id=profile_b.profile_id)
+
+        list_resp = client.get(
+            f"{API_PREFIX}/forms/submissions?profile_id={profile_a.profile_id}"
+        )
+        assert list_resp.status_code == 200
+        items = list_resp.json()
+        assert len(items) == 1
+        assert items[0]["profile_id"] == str(profile_a.profile_id)
+
+        analytics_resp = client.get(
+            f"{API_PREFIX}/forms/submissions/analytics?profile_id={profile_a.profile_id}"
+        )
+        assert analytics_resp.status_code == 200
+        assert analytics_resp.json()["total_submissions"] == 1
+
+    def test_fill_form_persists_profile_id(self, client, mock_controller, db, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.core.paths.PROJECT_ROOT", tmp_path)
+        pdf_file = tmp_path / "employee.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4 fake")
+        tpl_id = _seed_template(client, pdf_path=str(pdf_file.relative_to(tmp_path)))
+        profile = _seed_profile(db, name="User A")
+
+        resp = client.post(
+            f"{API_PREFIX}/forms/fill",
+            json={
+                "template_id": tpl_id,
+                "input_text": "Incident narrative text.",
+                "profile_id": str(profile.profile_id),
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["profile_id"] == str(profile.profile_id)
+        fetched = db.get(FormSubmission, data["id"])
+        assert fetched.profile_id == profile.profile_id

@@ -149,7 +149,13 @@ def test_formsubmission_columns(alembic_cfg, alembic_engine):
     inspector = inspect(alembic_engine)
     columns = {c["name"] for c in inspector.get_columns("formsubmission")}
     assert columns == {
-        "id", "template_id", "input_id", "input_text", "output_pdf_path", "created_at"
+        "id",
+        "template_id",
+        "input_id",
+        "profile_id",
+        "input_text",
+        "output_pdf_path",
+        "created_at",
     }
 
 
@@ -158,9 +164,10 @@ def test_formsubmission_fk(alembic_cfg, alembic_engine):
 
     inspector = inspect(alembic_engine)
     fks = {fk["referred_table"]: fk for fk in inspector.get_foreign_keys("formsubmission")}
-    assert len(fks) == 2
+    assert len(fks) == 3
     assert fks["template"]["referred_columns"] == ["id"]
     assert fks["inputs"]["referred_columns"] == ["input_id"]
+    assert fks["profiles"]["referred_columns"] == ["profile_id"]
 
 
 def test_job_columns(alembic_cfg, alembic_engine):
